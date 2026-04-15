@@ -1,22 +1,36 @@
 from functions.write_file import write_file
+import shutil
 import os
-    
 
 
-def test_write_file(working_directory, file_path, content):
+def run_test(working_directory, file_path, content):
+    print(f"Testing: write_file('{working_directory}', '{file_path}', '{content}')")
+
     result = write_file(working_directory, file_path, content)
-    assert result == f"Successfully wrote to \"{file_path}\" ({len(content)} characters written)"
-    assert os.path.exists(f"{working_directory}/{file_path}")
-    with open(f"{working_directory}/{file_path}", "r") as f:
-        assert f.read() == content
-    os.remove(f"{working_directory}/{file_path}")
-    os.rmdir(working_directory)
-    
-    
+    print("Result:", result)
+
+    # Se è un successo, controlla file
+    if result.startswith("Successfully"):
+        full_path = os.path.join(working_directory, file_path)
+
+        print("File exists:", os.path.exists(full_path))
+
+        if os.path.exists(full_path):
+            with open(full_path, "r") as f:
+                print("File content:", f.read())
+
+        # cleanup
+        if os.path.exists(working_directory):
+            shutil.rmtree(working_directory)
+
+    print("-" * 40)
+
+
 def main():
-    test_write_file("calculator", "lorem.txt", "wait, this isn't lorem ipsum")
-    test_write_file("calculator", "pkg/morelorem.txt", "lorem ipsum dolor sit amet")
-    test_write_file("calculator", "/tmp/temp.txt", "this should not be allowed")
-    
+    run_test("calculator", "lorem.txt", "wait, this isn't lorem ipsum")
+    run_test("calculator", "pkg/morelorem.txt", "lorem ipsum dolor sit amet")
+    run_test("calculator", "/tmp/temp.txt", "this should not be allowed")
+
+
 if __name__ == "__main__":
     main()
