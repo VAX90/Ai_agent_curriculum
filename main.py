@@ -1,10 +1,13 @@
+import argparse
 import os
 import time
+
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-import argparse
+
 from functions.get_files_info import get_files_info
+from prompt import system_prompt
 
 
 def generate_with_retry(client, model, messages, max_retries=50, delay=3):
@@ -12,7 +15,8 @@ def generate_with_retry(client, model, messages, max_retries=50, delay=3):
         try:
             return client.models.generate_content(
                 model=model,
-                contents=messages
+                contents=messages,
+                config=types.GenerateContentConfig(system_instruction=system_prompt),
             )
         except Exception as e:
             if "503" in str(e) and attempt < max_retries - 1:
@@ -35,9 +39,7 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     args = parser.parse_args()
 
-    messages = [
-        types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
-    ]
+    messages = [types.Content(role="user", parts=[types.Part(text=args.user_prompt)])]
 
     response = generate_with_retry(client, model, messages)
 
@@ -55,6 +57,7 @@ def main():
         print(f"Response:\n{response.text}")
     else:
         print(f"Response:\n{response.text}")
+
 
 print(get_files_info("calculator"))
 
