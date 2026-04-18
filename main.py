@@ -6,60 +6,119 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from functions.get_files_info import get_files_info
+from functions.call_functions import available_functions
 from prompt import system_prompt
 
+MODEL_NAME = "gemini-2.5-flash"
+MAX_RETRIES = 50
+RETRY_DELAY = 3
 
-def generate_with_retry(client, model, messages, max_retries=50, delay=3):
+
+def get_api_key() -> str:
+    load_dotenv()
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not found")
+    return api_key
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Chatbot")
+    parser.add_argument("user_prompt", type=str, help="User prompt")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+    return parser.parse_args()
+
+
+def build_messages(user_prompt: str) -> list[types.Content]:
+    return [
+        types.Content(
+            role="user",
+            parts=[types.Part(text=user_prompt)],
+        )
+    ]
+
+
+def generate_with_retry(
+    client: genai.Client,
+    model: str,
+    messages: list[types.Content],
+    max_retries: int = MAX_RETRIES,
+    delay: int = RETRY_DELAY,
+):
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(
                 model=model,
                 contents=messages,
-                config=types.GenerateContentConfig(system_instruction=system_prompt),
+                config=types.GenerateContentConfig(
+                    tools=[available_functions],
+                    system_instruction=system_prompt,
+                ),
             )
-        except Exception as e:
-            if "503" in str(e) and attempt < max_retries - 1:
+        except Exception as exc:
+            is_503_error = "503" in str(exc)
+
+            if is_503_error and attempt < max_retries - 1:
                 time.sleep(delay)
                 continue
+
             raise
 
 
-def main():
-    load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("API_KEY not found")
+def print_usage(response, user_prompt: str, verbose: bool) -> None:
+    if not verbose:
+        return
 
-    client = genai.Client(api_key=api_key)
-    model = "gemini-2.5-flash"
+    usage = getattr(response, "usage_metadata", None)
 
-    parser = argparse.ArgumentParser(description="Chatbot")
-    parser.add_argument("user_prompt", type=str, help="User prompt")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    args = parser.parse_args()
+    prompt_tokens = getattr(usage, "prompt_token_count", None)
+    response_tokens = getattr(usage, "candidates_token_count", None)
 
-    messages = [types.Content(role="user", parts=[types.Part(text=args.user_prompt)])]
+    print(f"Prompt tokens: {prompt_tokens}")
+    print(f"Response tokens: {response_tokens}")
+    print(f"User prompt: {user_prompt}")
 
-    response = generate_with_retry(client, model, messages)
 
-    if (
-        response is None
-        or response.usage_metadata.prompt_token_count is None
-        or response.usage_metadata.candidates_token_count is None
-    ):
+def handle_response(response, user_prompt: str, verbose: bool) -> None:
+    if response is None:
         raise RuntimeError("Response is None")
 
-    if args.verbose:
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-        print(f"User prompt: {args.user_prompt}")
-        print(f"Response:\n{response.text}")
-    else:
-        print(f"Response:\n{response.text}")
+    function_calls = getattr(response, "function_calls", None)
+
+    if function_calls:
+        print_usage(response, user_prompt, verbose)
+
+        for function_call in function_calls:
+            print(f"Calling function: {function_call.name}({function_call.args})")
+        return
+
+    print_usage(response, user_prompt, verbose)
+    print(response.text)
 
 
-print(get_files_info("calculator"))
+def main() -> None:
+    args = parse_args()
+    api_key = get_api_key()
+
+    client = genai.Client(api_key=api_key)
+    messages = build_messages(args.user_prompt)
+
+    response = generate_with_retry(
+        client=client,
+        model=MODEL_NAME,
+        messages=messages,
+    )
+
+    handle_response(
+        response=response,
+        user_prompt=args.user_prompt,
+        verbose=args.verbose,
+    )
+
 
 if __name__ == "__main__":
     main()
