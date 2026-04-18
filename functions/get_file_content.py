@@ -1,6 +1,23 @@
 import os
 from config import MAX_CHARS
+from google.genai import types
 
+
+
+schema_get_file_content = types.FunctionDeclaration(
+    name="get_file_content",
+    description="Read and get content of specified file inside the working directory you need to stay within, file will get truncated at 10000 bytes if longer",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "file_path": types.Schema(
+                type=types.Type.STRING,
+                description="Path to file needs to be worked on in the provided working directory, you shall only pass files that are within the provided working directory itself or in nested subdirectories within thath"
+            ),
+        },
+        required=["file_path"],
+    ),
+)
 
 def get_file_content(working_directory: str, file_path: str) -> str:
     try:
