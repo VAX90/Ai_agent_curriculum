@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from functions.call_functions import available_functions
+from functions.call_functions import available_functions, call_function
 from prompt import system_prompt
 
 MODEL_NAME = "gemini-2.5-flash"
@@ -92,12 +92,22 @@ def handle_response(response, user_prompt: str, verbose: bool) -> None:
     if function_calls:
         print_usage(response, user_prompt, verbose)
 
+        function_results = []
         for function_call in function_calls:
-            print(f"Calling function: {function_call.name}({function_call.args})")
-        return
+            result = call_function(function_call, verbose=verbose)
 
-    print_usage(response, user_prompt, verbose)
-    print(response.text)
+            if not result.parts:
+                raise RuntimeError("Empty parts in function call result")
+            if result.parts[0].function_response is None:
+                raise RuntimeError("Missing function_response")
+            if result.parts[0].function_response.response is None:
+                raise RuntimeError("Missing response")
+
+            function_results.append(result.parts[0])
+
+            if verbose:
+                print(f"-> {result.parts[0].function_response.response}")
+        return
 
 
 def main() -> None:
